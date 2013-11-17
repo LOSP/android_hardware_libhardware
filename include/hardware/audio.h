@@ -124,6 +124,30 @@ __BEGIN_DECLS
  * "sup_sampling_rates=44100|48000" */
 #define AUDIO_PARAMETER_STREAM_SUP_SAMPLING_RATES "sup_sampling_rates"
 
+/* Query handle fm parameter*/
+#define AUDIO_PARAMETER_KEY_HANDLE_FM "handle_fm"
+
+/* Query voip flag */
+#define AUDIO_PARAMETER_KEY_VOIP_CHECK "voip_flag"
+
+/* Query Fluence type */
+#define AUDIO_PARAMETER_KEY_FLUENCE_TYPE "fluence"
+
+/* Query if surround sound recording is supported */
+#define AUDIO_PARAMETER_KEY_SSR "ssr"
+
+/* Query if a2dp  is supported */
+#define AUDIO_PARAMETER_KEY_HANDLE_A2DP_DEVICE "isA2dpDeviceSupported"
+
+/* Query ADSP Status */
+#define AUDIO_PARAMETER_KEY_ADSP_STATUS "ADSP_STATUS"
+
+/* Query if Proxy can be Opend */
+#define AUDIO_CAN_OPEN_PROXY "can_open_proxy"
+
+/* Query fm volume */
+#define AUDIO_PARAMETER_KEY_FM_VOLUME "fm_volume"
+
 /**
  * audio codec parameters
  */
@@ -404,7 +428,7 @@ struct audio_stream_out {
      */
     int (*get_presentation_position)(const struct audio_stream_out *stream,
                                uint64_t *frames, struct timespec *timestamp);
-
+#endif
 #ifdef QCOM_HARDWARE
     /**
     * return the current timestamp after quering to the driver
@@ -428,7 +452,6 @@ struct audio_stream_out {
      */
     int (*is_buffer_available) (const struct audio_stream_out *stream,
                                      int *isAvail);
-#endif
 #endif
 };
 typedef struct audio_stream_out audio_stream_out_t;
@@ -467,6 +490,52 @@ typedef struct audio_stream_in audio_stream_in_t;
 static inline size_t audio_stream_frame_size(const struct audio_stream *s)
 {
     size_t chan_samp_sz;
+#ifdef QCOM_HARDWARE
+    uint32_t chan_mask = s->get_channels(s);
+    int format = s->get_format(s);
+    char *tmpparam;
+    int isParamEqual;
+
+    if(!s)
+        return 0;
+    if (audio_is_input_channel(chan_mask)) {
+        chan_mask &= (AUDIO_CHANNEL_IN_STEREO | \
+                      AUDIO_CHANNEL_IN_MONO | \
+                      AUDIO_CHANNEL_IN_5POINT1);
+    }
+    tmpparam = s->get_parameters(s, "voip_flag");
+    isParamEqual = !strncmp(tmpparam,"voip_flag=1", sizeof("voip_flag=1"));
+    free(tmpparam);
+    if(isParamEqual) {
+        if(format != AUDIO_FORMAT_PCM_8_BIT)
+            return popcount(chan_mask) * sizeof(int16_t);
+        else
+            return popcount(chan_mask) * sizeof(int8_t);
+    }
+
+    switch (format) {
+    case AUDIO_FORMAT_AMR_NB:
+        chan_samp_sz = 32;
+        break;
+    case AUDIO_FORMAT_EVRC:
+        chan_samp_sz = 23;
+        break;
+    case AUDIO_FORMAT_QCELP:
+        chan_samp_sz = 35;
+        break;
+    case AUDIO_FORMAT_AMR_WB:
+        chan_samp_sz = 61;
+        break;
+    case AUDIO_FORMAT_PCM_16_BIT:
+        chan_samp_sz = sizeof(int16_t);
+        break;
+    case AUDIO_FORMAT_PCM_8_BIT:
+    default:
+        chan_samp_sz = sizeof(int8_t);
+        break;
+    }
+    return popcount(chan_mask) * chan_samp_sz;
+#else
     audio_format_t format = s->get_format(s);
 
     if (audio_is_linear_pcm(format)) {
@@ -475,6 +544,7 @@ static inline size_t audio_stream_frame_size(const struct audio_stream *s)
     }
 
     return sizeof(int8_t);
+#endif
 }
 
 
@@ -637,7 +707,6 @@ static inline int audio_hw_device_close(struct audio_hw_device* device)
 {
     return device->common.close(&device->common);
 }
-
 
 #ifdef QCOM_HARDWARE
 #ifdef __cplusplus
